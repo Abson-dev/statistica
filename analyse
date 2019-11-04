@@ -1,0 +1,543 @@
+#https://livebook.datascienceheroes.com/exploratory-data-analysis.html
+
+#1 Analyse de données exploratoire
+#1.1 Profiling, La voix des chiffres
+#État de santé de l'ensemble de données :
+ #1 Obtention de métriques telles que le nombre total de lignes, de colonnes, de types de données, de zéros et de valeurs manquantes
+ #2 Impact de chacun des éléments précédents sur différentes analyses
+ #3 Comment filtrer et utiliser rapidement (et avec) les données, les nettoyer
+#Analyse univariée en variable catégorielle :
+ #Fréquence, pourcentage, valeur cumulative et tracés colorés
+#Analyse univariée avec variables numériques :
+  #1 Percentile, dispersion, écart type, moyenne, valeurs supérieure et inférieure
+  #2 Centile vs quantile vs quartile
+  #3 Kurtosis, asymétrie, gamme inter-quartile, coefficient de variation
+  #4 Tracé des distributions
+#Étude de cas complète basée sur «Data World» , préparation et analyse de données
+
+
+#df_status(data): Profilage de la structure du jeu de données
+#describe(data): Profilage numérique et catégorique (quantitatif)
+#freq(data): Profilage catégorique (quantitatif et graphique).
+#profiling_num(data): Profilage de variables numériques (quantitatif)
+#plot_num(data): Profilage de variables numériques (graphiques)
+
+#1.1.1 État de santé du jeu de données
+#La quantité de zéros, NA, Inf, les valeurs uniques ainsi que le type de données peuvent conduire à un bon ou mauvais modèle. Voici une approche pour couvrir la toute première étape de la modélisation de données.
+
+# Loading funModeling!
+library(funModeling)
+library(dplyr)
+data(heart_disease)
+#1.1.1.1 Vérification des valeurs manquantes, des zéros, du type de données et des valeurs uniques
+# Profiling the data input
+df_status(heart_disease)
+#q_zeros: quantité de zéros ( p_zeros: en pourcentage)
+#q_inf: quantité de valeurs infinies ( p_inf: en pourcentage)
+#q_na: quantité de NA ( p_na: en pourcentage)
+#type: facteur ou numérique
+#unique: quantité de valeurs uniques
+
+#1.1.1.2 Pourquoi ces métriques sont-elles importantes?
+
+#Zéros : les variables avec beaucoup de zéros peuvent ne pas être utiles pour la modélisation et, dans certains cas, elles peuvent biaiser considérablement le modèle.
+#NA : plusieurs modèles excluent automatiquement les lignes avec NA ( forêt aléatoire par exemple). En conséquence, le modèle final peut être biaisé en raison de plusieurs lignes manquantes en raison d'une seule variable. Par exemple, si les données ne contiennent qu'une variable sur 100 avec 90% des NA, le modèle sera en formation avec seulement 10% des lignes d'origine.
+#Inf : Les valeurs infinies peuvent conduire à un comportement inattendu dans certaines fonctions de R.
+#Type : Certaines variables sont codées sous forme de nombres, mais ce sont des codes ou des catégories et les modèles ne les traitent pas de la même manière.
+#Unique : Les variables factorielles / catégorielles avec un nombre élevé de valeurs différentes (~ 30) ont tendance à sur-adapter si les catégories ont une cardinalité faible ( arbres de décision, par exemple).
+
+
+#1.1.1.3 Filtrer les cas non désirés
+
+#Supprimer les variables avec un nombre élevé de zéros
+
+# Profiling the Data Input
+my_data_status=df_status(heart_disease, print_results = F)
+
+# Removing variables with 60% of zero values
+vars_to_remove=filter(my_data_status, p_zeros > 60)  %>% .$variable
+vars_to_remove
+
+# Keeping all columns except the ones present in 'vars_to_remove' vector
+heart_disease_2=select(heart_disease, -one_of(vars_to_remove))
+
+#Classement des données par pourcentage de zéros
+arrange(my_data_status, -p_zeros) %>% select(variable, q_zeros, p_zeros)
+
+#1.1.2 Profilage des variables qualitatives
+#1.1.1.5 Obtenir d’autres statistiques communes: nombre total de lignes , nombre total de colonnes et noms de colonnes :
+# Total rows
+nrow(heart_disease)
+# Total columns
+ncol(heart_disease)
+# Column names
+colnames(heart_disease)
+#Figure 1.2: Analyse de fréquence 1
+freq(data=heart_disease, input = c('thal','chest_pain'))
+#toutes les variables
+freq(data=heart_disease)
+#on exclu le tracés
+freq(data=heart_disease$thal, plot = FALSE, na.rm = TRUE)
+freq(data=heart_disease, path_out='C:\\Users\\Hp\\Desktop\\Memoire_ITS4\\Livre Live Data Science')
+
+#1.1.2.1 Présentation de la fonction describe
+#nous permet de profiler rapidement un jeu de données complet pour les variables numériques et catégorielles.
+# Just keeping two variables to use in this example
+heart_disease_3=select(heart_disease, thal, chest_pain)
+
+# Profiling the data!
+describe(heart_disease_3)
+
+#1.1.3 Profiler des variables numériques
+#Partie 1: Présentation de l'étude de cas «World Data»
+library(Hmisc)
+
+# Loading data from the book repository without altering the format
+data_world=read.csv(file = "https://goo.gl/2TrDgN", header = T, stringsAsFactors = F, na.strings = "..")
+
+# Excluding missing values in Series.Code. The data downloaded from the web page contains four lines with "free-text" at the bottom of the file.
+data_world=filter(data_world, Series.Code!="")
+
+# The magical function that keeps the newest values for each metric. If you're not familiar with R, then skip it.
+max_ix<-function(d) 
+{
+  ix=which(!is.na(d))
+  res=ifelse(length(ix)==0, NA, d[max(ix)])
+  return(res)
+}
+
+data_world$newest_value=apply(data_world[,5:ncol(data_world)], 1, FUN=max_ix)
+
+# Printing the first three rows
+head(data_world, 3)
+#1.1.3.2 Making a data scientist decision
+# Get the list of indicator descriptions.
+names=unique(select(data_world, Series.Name, Series.Code))
+head(names, 5)
+
+# Convert a few
+df_conv_world=data.frame(
+  new_name=c("urban_poverty_headcount", 
+             "rural_poverty_headcount", 
+             "gini_index", 
+             "pop_living_slums",
+             "poverty_headcount_1.9"), 
+  Series.Code=c("SI.POV.URHC", 
+                "SI.POV.RUHC",
+                "SI.POV.GINI",
+                "EN.POP.SLUM.UR.ZS",
+                "SI.POV.DDAY"), 
+  stringsAsFactors = F)
+
+# adding the new indicator value
+data_world_2 = left_join(data_world, 
+                         df_conv_world, 
+                         by="Series.Code", 
+                         all.x=T)
+
+data_world_2 = 
+  mutate(data_world_2, Series.Code_2=
+           ifelse(!is.na(new_name), 
+                  as.character(data_world_2$new_name), 
+                  data_world_2$Series.Code)
+         )
+		 
+
+# The package 'reshape2' contains both 'dcast' and 'melt' functions
+library(reshape2)
+
+data_world_wide=dcast(data_world_2, Country.Name  ~ Series.Code_2, value.var = "newest_value")
+
+# Printing the first three rows
+head(data_world_wide, 3)
+
+
+#1.1.3.3 Part 2: Doing the numerical profiling in R
+library(Hmisc) # contains the `describe` function
+
+vars_to_profile=c("gini_index", "poverty_headcount_1.9")
+data_subset=select(data_world_wide, one_of(vars_to_profile))
+
+# Using the `describe` on a complete dataset. # It can be run with one variable; for example, describe(data_subset$poverty_headcount_1.9)
+
+describe(data_subset)
+library(funModeling)
+
+# Full numerical profiling in one function automatically excludes non-numerical variables
+profiling_num(data_world_wide)
+
+#1.1.3.3.1 Advice when using profiling_num
+my_profiling_table=profiling_num(data_world_wide, print_results = FALSE) %>% select(variable, mean, p_01, p_99, range_80)
+
+# Printing only the first three rows
+head(my_profiling_table, 3)
+
+#1.1.3.3.2 Profiling numerical variables by plotting
+plot_num(data_world_wide)
+
+
+#1.2 Corrélation et relation
+# Loading needed libraries
+library(funModeling) # contains heart_disease data
+library(minerva) # contains MIC statistic
+library(ggplot2)
+library(dplyr)
+library(reshape2) 
+library(gridExtra) # allow us to plot two plots in a row
+options(scipen=999) # disable scientific notation
+
+#Ce chapitre contient les aspects méthodologiques et pratiques de la mesure de la corrélation dans les variables. Nous verrons que le mot de corrélation peut être traduit en « relation fonctionnelle ».
+#Nous allons faire un pas en avant en recalculant leur relation grâce à une métrique plus robuste (MIC).
+
+#1.2.2 Linear correlation
+#Peut-être que la mesure de corrélation la plus standard pour les variables numériques est le R statistic(ou coefficient de Pearson) qui va de 1 corrélation positive à -1 corrélation négative . Une valeur autour 0n'implique aucune corrélation.
+#correlation_tablerécupère la métrique R pour toutes les variables numériques en ignorant les variables catégoriques / nominales.
+correlation_table(data=heart_disease, target="has_heart_disease")
+
+#La statistique R est fortement influencée par les valeurs aberrantes et les relations non linéaires .
+
+#1.2.2.1 Correlation on Anscombe’s Quartet
+#L'exemple suivant calcule le R2 et trace chaque paire.
+# Reading anscombe quartet data
+anscombe_data = 
+  read.delim(file="https://goo.gl/mVLz5L", header = T)
+
+# calculating the correlation (R squared, or R2) for 
+#every pair, every value is the same: 0.86.
+cor_1 = cor(anscombe_data$x1, anscombe_data$y1)
+cor_2 = cor(anscombe_data$x2, anscombe_data$y2)
+cor_3 = cor(anscombe_data$x3, anscombe_data$y3)
+cor_4 = cor(anscombe_data$x4, anscombe_data$y4)
+
+# defining the function
+plot_anscombe <- function(x, y, value, type)
+{
+  # 'anscombe_data' is a global variable, this is 
+  # a bad programming practice ;)
+  p=ggplot(anscombe_data, aes_string(x,y))  + 
+    geom_smooth(method='lm', fill=NA) + 
+    geom_point(aes(colour=factor(1), 
+                   fill = factor(1)), 
+               shape=21, size = 2
+               ) + 
+    ylim(2, 13) + 
+    xlim(4, 19) + 
+    theme_minimal() + 
+    theme(legend.position="none") + 
+    annotate("text", 
+             x = 12, 
+             y =4.5, 
+             label = 
+               sprintf("%s: %s", 
+                       type, 
+                       round(value,2)
+                       )
+             )  
+  
+  return(p)
+}
+
+# plotting in a 2x2 grid
+grid.arrange(plot_anscombe("x1", "y1", cor_1, "R2"), 
+             plot_anscombe("x2", "y2", cor_2, "R2"), 
+             plot_anscombe("x3", "y3", cor_3, "R2"), 
+             plot_anscombe("x4", "y4", cor_4, "R2"), 
+             ncol=2, 
+             nrow=2)
+
+
+#1.2.3 Corrélation basée sur la théorie de l'information
+#Ces relations peuvent être mieux mesurées avec les concepts de la théorie de l'information . L'un des nombreux algorithmes permettant de mesurer la corrélation sur cette base est le suivant: MINE , acronyme de: Maximal Information-based exploration.
+
+#1.2.3.1 Un exemple dans R: Une relation parfaite
+#Traçons une relation non linéaire, directement basée sur une fonction (exponentielle négative), et imprimons la valeur MIC.
+x=seq(0, 20, length.out=500)
+df_exp=data.frame(x=x, y=dexp(x, rate=0.65))
+ggplot(df_exp, aes(x=x, y=y)) + geom_line(color='steelblue') + theme_minimal()
+
+# Calculating linear correlation
+res_cor_R2=cor(df_exp)[1,2]^2
+sprintf("R2: %s", round(res_cor_R2,2))
+
+# now computing the MIC metric
+res_mine=mine(df_exp)
+sprintf("MIC: %s", res_mine$MIC[1,2])
+
+#1.2.3.2 Analyse des résultats
+#Le MIC=1 indique qu'il existe une corrélation parfaite entre les deux variables. Si nous faisions de l' ingénierie des caractéristiques, cette variable devrait être incluse.
+#En plus d’une simple corrélation, le MIC dit: «Ces deux variables montrent une relation fonctionnelle».
+
+
+
+
+#1.2.5 Mesure de la non-linéarité (MIC-R2)
+#L'un d'eux est MICR2, utilisé comme mesure de la non-linéarité . Il est calculé en utilisant: MIC - R2. Puisque R2 mesure la linéarité, une valeur élevée MICR2indiquerait une relation non linéaire.
+
+# MIC r2: non-linearity metric
+round(res_mine_2$MICR2, 3)
+# calculating MIC r2 manually
+round(res_mine_2$MIC-res_R2, 3)
+#Les relations non linéaires sont plus difficiles à construire un modèle, encore plus en utilisant un algorithme linéaire comme les arbres de décision ou la régression linéaire.
+
+
+# creating data example
+df_example=data.frame(x=df_exp$x, 
+                      y_exp=df_exp$y, 
+                      y_linear=3*df_exp$x+2)
+
+# getting mine metrics
+res_mine_3=mine(df_example)
+
+# generating labels to print the results
+results_linear = 
+  sprintf("MIC: %s \n MIC-R2 (non-linearity): %s",
+          res_mine_3$MIC[1,3],
+          round(res_mine_3$MICR2[1,3],2)
+          )
+
+results_exp = 
+  sprintf("MIC: %s \n MIC-R2 (non-linearity): %s", 
+          res_mine_3$MIC[1,2],
+          round(res_mine_3$MICR2[1,2],4)
+          )
+
+# Plotting results 
+# Creating plot exponential variable
+p_exp=ggplot(df_example, aes(x=x, y=y_exp)) + 
+  geom_line(color='steelblue') + 
+  annotate("text", x = 11, y =0.4, label = results_exp) + 
+  theme_minimal()
+
+# Creating plot linear variable
+p_linear=ggplot(df_example, aes(x=x, y=y_linear)) + 
+  geom_line(color='steelblue') + 
+  annotate("text", x = 8, y = 55, 
+           label = results_linear) + 
+  theme_minimal()
+
+grid.arrange(p_exp,p_linear,ncol=2)
+#Figure 1.9: Comparaison des relations
+#Les deux graphiques montrent une corrélation parfaite (ou relation), tenant un CMI = 1. En ce qui concerne la non-linéarité, MICR2 se comporte comme prévu, dans y_exp= 0.6101 et dans y_linear= 0.
+
+#Ce point est important car le MIC se comporte comme R2 dans les relations linéaires , plus il s'adapte assez bien aux relations non linéaires , comme nous l'avons vu précédemment, en récupérant une métrique de score particulière ( MICR2) pour profiler la relation.
+
+
+
+#1.2.9 Corrélation sur les variables qualitatives
+library(caret)
+
+# selecting just a few variables
+heart_disease_2 = 
+  select(heart_disease, max_heart_rate, oldpeak, 
+         thal, chest_pain,exer_angina, has_heart_disease)
+
+# this conversion from categorical to a numeric is merely 
+# to have a cleaner plot
+heart_disease_2$has_heart_disease=
+  ifelse(heart_disease_2$has_heart_disease=="yes", 1, 0)
+
+# it converts all categorical variables (factor and 
+# character for R) into numerical variables.
+# skipping the original so the data is ready to use
+dmy = dummyVars(" ~ .", data = heart_disease_2)
+
+heart_disease_3 = 
+  data.frame(predict(dmy, newdata = heart_disease_2))
+
+# Important: If you recieve this message 
+# `Error: Missing values present in input variable 'x'. 
+# Consider using use = 'pairwise.complete.obs'.` 
+# is because data has missing values.
+# Please don't omit NA without an impact analysis first, 
+# in this case it is not important. 
+heart_disease_4=na.omit(heart_disease_3)
+  
+# compute the mic!
+mine_res_hd=mine(heart_disease_4)
+#un échantillon
+mine_res_hd$MIC[1:5,1:5]
+
+#1.2.9.1 Imprimer des tracés sophistiqués!
+# library wto plot that matrix
+library(corrplot) 
+# to use the color pallete brewer.pal
+library(RColorBrewer) 
+
+# hack to visualize the maximum value of the 
+# scale excluding the diagonal (variable against itself)
+diag(mine_res_hd$MIC)=0
+
+# Correlation plot with circles. 
+corrplot(mine_res_hd$MIC, 
+         method="circle",
+         col=brewer.pal(n=10, name="PuOr"),
+         # only display upper diagonal
+         type="lower", 
+         #label color, size and rotation
+         tl.col="red",
+         tl.cex = 0.9, 
+         tl.srt=90, 
+         # dont print diagonal (var against itself)
+         diag=FALSE, 
+         # accept a any matrix, mic in this case 
+         #(not a correlation element)
+         is.corr = F 
+        
+)
+#Figure 1.16: Diagramme de corrélation
+# Correlation plot with color and correlation MIC
+corrplot(mine_res_hd$MIC, 
+         method="color",
+         type="lower", 
+         number.cex=0.7,
+         # Add coefficient of correlation
+         addCoef.col = "black", 
+         tl.col="red", 
+         tl.srt=90, 
+         tl.cex = 0.9,
+         diag=FALSE, 
+         is.corr = F 
+)
+#Figure 1.16: Diagramme de corrélation
+#1.2.9.2 Un commentaire sur ce type de parcelles
+#Ils ne sont utiles que lorsque le nombre de variables n'est pas grand. Ou si vous effectuez d'abord une sélection de variables, en gardant à l'esprit que chaque variable doit être numérique.
+
+#S'il y a une variable catégorique dans la sélection, vous pouvez d'abord la convertir en valeur numérique et inspecter la relation entre les variables, ce qui permet de mieux comprendre comment certaines valeurs des variables catégorielles sont davantage liées à certains résultats, comme dans ce cas.
+
+#1.2.9.3 Qu'en est-il des informations tirées des parcelles?
+cross_plot(heart_disease, input = "chest_pain", target = "has_heart_disease", plot_type = "percentual")
+#Figure 1.17: Analyse visuelle à l'aide d'un graphique croisé
+#1.2.10 Analyse de corrélation basée sur la théorie de l'information
+# Getting the index of the variable to 
+# predict: has_heart_disease
+target="has_heart_disease"
+index_target=grep(target, colnames(heart_disease_4))
+
+# master takes the index column number to calculate all
+# the correlations
+mic_predictive=mine(heart_disease_4, 
+                    master = index_target)$MIC
+
+# creating the data frame containing the results, 
+# ordering descently by its correlation and excluding
+# the correlation of target vs itself
+df_predictive = 
+  data.frame(variable=rownames(mic_predictive), 
+                         mic=mic_predictive[,1], 
+                         stringsAsFactors = F) %>% 
+  arrange(-mic) %>% 
+  filter(variable!=target)
+
+# creating a colorful plot showing importance variable
+# based on MIC measure
+ggplot(df_predictive, 
+       aes(x=reorder(variable, mic),y=mic, fill=variable)
+       ) + 
+  geom_bar(stat='identity') + 
+  coord_flip() + 
+  theme_bw() + 
+  xlab("") + 
+  ylab("Variable Importance (based on MIC)") + 
+  guides(fill=FALSE)
+#Figure 1.18: Corrélation utilisant la théorie de l'information
+#Bien qu'il soit recommandé d'exécuter des corrélations entre toutes les variables afin d'exclure les entités en entrée corrélées.
+#1.2.11 Mais juste MINE couvre-t-il?
+#1.2.11.1 Un autre exemple de corrélation (information mutuelle)
+#Cette fois, nous utiliserons le infotheopackage, nous devons d’abord effectuer une étape de préparation des données , en appliquant une discretizefonction (ou un binning) présente dans le package. Il convertit chaque variable numérique en catégorie sur la base de critères d'égale fréquence.
+
+#Le code suivant créera la matrice de corrélation comme nous l’avons déjà vu, mais en fonction de l’indice d’information mutuelle.
+
+library(infotheo)
+# discretizing every variable
+heart_disease_4_disc=discretize(heart_disease_4) 
+
+# calculating "correlation" based on mutual information
+heart_info=mutinformation(heart_disease_4_disc, method= "emp")
+
+# hack to visualize the maximum value of the scale excluding the diagonal (var against itself)
+diag(heart_info)=0
+
+# Correlation plot with color and correlation Mutual Information from Infotheo package. This line only retrieves the plot of the right. 
+corrplot(heart_info, method="color",type="lower", number.cex=0.6,addCoef.col = "black", tl.col="red", tl.srt=90, tl.cex = 0.9, diag=FALSE, is.corr = F)
+#Figure 1.19: Comparaison de l'importance variable
+#1.2.12 Mesures d'information: une perspective générale
+#En plus de la corrélation, la CMI ou une autre mesure métrique d’information s’il existe une relation fonctionnelle .
+
+#Une valeur MIC élevée indique que la relation entre les deux variables peut être expliquée par une fonction. Est-ce notre travail de trouver cette fonction ou ce modèle prédictif?
+
+#Cette analyse est étendue aux n variables, ce livre introduit un autre algorithme dans le chapitre Sélection des meilleures variables.
+
+#Certains modèles prédictifs fonctionnent mieux que d'autres, mais si la relation est absolument bruyante, quelle que soit l'évolution de l'algorithme, les résultats seront mauvais.
+
+#1.2.13 Conclusions
+#Le quatuor d'Anscombe nous a enseigné la bonne pratique consistant à obtenir la statistique brute avec une intrigue.
+
+#Nous pourrions voir comment le bruit peut affecter la relation entre deux variables et ce phénomène apparaît toujours dans les données. Le bruit dans les données confond le modèle prédictif.
+
+#Le bruit est lié à l'erreur et il peut être étudié avec des mesures basées sur la théorie de l'information, telles que l'information mutuelle et le coefficient d'information maximal , qui vont encore plus loin que le R carré typique. Une étude clinique utilise MINE comme sélecteur de caractéristiques (Caban et al. 2012 ) .
+
+#Ces méthodes sont applicables en ingénierie des caractéristiques en tant que méthode qui ne repose pas sur un modèle prédictif pour classer les variables les plus importantes. Également applicable aux séries chronologiques de cluster.
+
+
+#2 Préparation des données
+#2.1 Gestion des types de données
+#Que allons-nous passer en revue dans ce chapitre?
+#Détecter le type de données correct
+#Comment convertir de catégorique en numérique
+#Comment convertir numérique en catégorique (méthodes de discrétisation)
+#Aspects théoriques et pratiques (exemples en R)
+#Comment un modèle prédictif considère les variables numériques
+
+
+#2.1.2 L'univers des types de données
+#2.1.4 Conversion de variables qualitatives en valeurs numériques
+library(caret) # contains dummyVars function
+library(dplyr) # data munging library
+library(funModeling) # df_status function
+  
+# Checking categorical variables
+status=df_status(heart_disease, print_results = F)
+filter(status,  type %in% c("factor", "character")) %>% select(variable)
+# It converts all categorical variables (factor and character) into numerical variables
+# It skips the original variable, so no need to remove it after the conversion, the data is ready to use.
+dmy = dummyVars(" ~ .", data = heart_disease)
+heart_disease_2 = data.frame(predict(dmy, newdata = heart_disease))
+
+# Checking the new numerical data set:
+colnames(heart_disease_2)
+
+# before
+as.numeric(heart_disease[7, "chest_pain"])
+# after
+heart_disease_2[7, c("chest_pain.1", "chest_pain.2", "chest_pain.3", "chest_pain.4")]
+#Ayant conservé et transformé uniquement les variables numériques tout en excluant les variables nominales, les données heart_disease_2sont prêtes à être utilisées.
+
+#2.2 Variable de cardinalité élevée dans les statistiques descriptives
+#Une variable de cardinalité élevée est une variable dans laquelle elle peut prendre de nombreuses valeurs différentes. Par exemple pays.
+#Ce chapitre abordera la réduction de la cardinalité basée sur la règle de Pareto, en utilisant la freqfonction qui donne un aperçu rapide de la concentration des valeurs et de la distribution variable.
+
+#2.2.2 Cardinalité élevée dans les statistiques descriptives
+
+#L'exemple suivant contient une enquête sur 910 cas, avec 3 colonnes: person, countryet has_flu, ce qui indique avoir cette maladie au cours du dernier mois.
+library(funModeling)
+# plotting first 10 rows
+head(data_country, 10)
+# exploring data, displaying only first 10 rows
+head(freq(data_country, "country"), 10)
+#Figure 2.9: Analyse de fréquence par pays
+# exploring data
+freq(data_country, "has_flu")
+#Figure 2.10: A une analyse de la fréquence de combustion
+#Le dernier tableau montre qu'il n'y a que 83 lignes has_flu="yes", ce qui représente environ 9% du total des habitants.
+#Mais beaucoup d’entre eux ne participent pratiquement pas aux données. Ceci est la longue queue , donc une technique pour réduire cardinalité est de garder ces catégories qui sont présentes dans un pourcentage élevé de la part de données, par exemple 70, 80 ou 90%, le principe de Pareto.
+# 'freq' function, from 'funModeling' package, retrieves the cumulative_percentage that will help to do the cut. 
+country_freq=freq(data_country, 'country', plot = F)
+
+# Since 'country_freq' is an ordered table by frequency, let's inspect the first 10 rows with the most share.
+country_freq[1:10,]
+#Donc, 10 pays représentent plus de 70% des cas. Nous pouvons assigner la catégorie otheraux cas restants et tracer:
+data_country$country_2=ifelse(data_country$country %in% country_freq[1:10,'country'], data_country$country, 'other')
+freq(data_country, 'country_2')
+#Figure 2.11: Variable de pays modifiée - analyse de fréquence
+
+
